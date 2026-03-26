@@ -8,3 +8,16 @@
 
 <img width="1625" height="942" alt="image" src="https://github.com/user-attachments/assets/655ffcf4-31a2-40d4-9a01-40f682b9580d" />
 
+提取验证：
+
+<img width="1618" height="935" alt="image" src="https://github.com/user-attachments/assets/4591ef9a-66cd-4375-ae6c-c2dcd1a462e6" />
+
+差异对比：
+
+<img width="1530" height="812" alt="image" src="https://github.com/user-attachments/assets/923caba6-9a4b-46ab-8471-81fefd66ecfe" />
+
+鲁棒性测试：
+
+<img width="1606" height="936" alt="image" src="https://github.com/user-attachments/assets/c5b32283-cf1e-4417-b3aa-172246ec3c02" />
+
+algorithm_report.txt robustness_report.txt分别为系统算法测试与鲁棒性测试结果详细内容
