@@ -16,18 +16,20 @@
 ## 核心代码
 对可翻转性评估算法进行了重构与优化，创新性的采用了连续评分机制
 
-    def _compute_score(self, block_3x3):
+        def _compute_score(self, block_3x3):
         block = (block_3x3 > 127).astype(int)
         center = block[1, 1]
 
         # ========== Step 1: 快速排除 ==========
-        # 条件 (a): 均匀块（全黑或全白）→ 不可翻转
         if len(np.unique(block)) == 1:
             return 0.0
-        # 条件 (b): 孤立点（中心与所有邻居相反）→ 不可翻转
+
         neighbors = block.flatten()
         neighbors = np.delete(neighbors, 4)
         if np.all(neighbors == 1 - center):
+            return 0.0
+
+        if self._has_straight_line(block):
             return 0.0
 
         # ========== Step 2: 计算特征 ==========
@@ -63,8 +65,9 @@
 
         # ========== Step 3: 综合评分 ==========
         # 综合评分
-        score = (0.3 * entropy + 0.2 * edge_strength + 0.2 * (total_trans / 14.0) +
-                 0.15 * (1 - center_diff) + 0.15 * stability)
+        score = (0.3 * entropy + 0.15 * edge_strength + 0.15 * (total_trans / 14.0) +
+                 0.2 * (1 - center_diff) + 0.2 * stability
+                 )
 
         # 连通性惩罚
         black_clusters, white_clusters = self._compute_connectivity(block)
@@ -77,11 +80,17 @@
 
 ## 成果展示
 
-<img width="1625" height="942" alt="image" src="https://github.com/user-attachments/assets/655ffcf4-31a2-40d4-9a01-40f682b9580d" />
+<img width="1615" height="894" alt="image" src="https://github.com/user-attachments/assets/b6c02176-55e3-4645-ac44-6195fb1c91f3" />
+
+可翻转性热图展示：
+
+<img width="1214" height="642" alt="image" src="https://github.com/user-attachments/assets/33e7b9eb-91a4-41ff-9029-364107127e2c" />
 
 提取验证：
 
-<img width="1618" height="935" alt="image" src="https://github.com/user-attachments/assets/4591ef9a-66cd-4375-ae6c-c2dcd1a462e6" />
+<img width="1207" height="663" alt="image" src="https://github.com/user-attachments/assets/0b382c82-7744-48d5-899c-3c22b2790e2e" />
+
+<img width="1206" height="679" alt="image" src="https://github.com/user-attachments/assets/b0d20b52-bbf3-4e2a-b0d6-7985ece77f44" />
 
 差异对比：
 
