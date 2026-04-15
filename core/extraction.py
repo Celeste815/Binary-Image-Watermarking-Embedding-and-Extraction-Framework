@@ -15,7 +15,6 @@ class WatermarkExtractor:
         test_img = watermarked_img.copy()
         h, w = test_img.shape
 
-        # 如果指定了原始形状，可能需要裁剪
         if original_shape is not None and original_shape != (h, w):
             # 假设图像中心是原始图像
             oh, ow = original_shape
@@ -34,7 +33,6 @@ class WatermarkExtractor:
 
         # 提取比特
         extracted_bits = []
-
         if embedded_blocks is not None and len(embedded_blocks) > 0:
             # 使用嵌入时记录的块位置
             for i, j in embedded_blocks:
@@ -44,7 +42,6 @@ class WatermarkExtractor:
                     parity = (np.sum(block == 0)) % 2
                     extracted_bits.append(parity)
         else:
-            # 如果没有记录，使用遍历逻辑
             max_blocks_h = h // self.block_size
             max_blocks_w = w // self.block_size
 
