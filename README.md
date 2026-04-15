@@ -4,6 +4,8 @@
 ## 核心技术
 在技术层面，构建了多维可翻转性评分模型，通过分析像素的平滑度、连通性与孤立点特征，筛选视觉影响最小的像素作为修改对象；采用块级统计特征调制策略，以块内黑像素数的奇偶性承载水印信息，实现盲提取；引入基于密钥的像素混洗机制，解决可翻转像素分布不均问题并增强安全性。
 
+同时对水印文本进行AES加密处理，使得实验安全性大幅提高。
+
 系统采用Python与OpenCV实现模块化架构，支持扫描文本、签名、二维码等多种二值图像，实现了高隐蔽性水印嵌入、盲提取、基础鲁棒性保障与密钥安全管理，并对嵌入容量与计算复杂度进行了理论分析。
 
 ## 创新点
@@ -83,10 +85,10 @@
 
 差异对比：
 
-<img width="1530" height="812" alt="image" src="https://github.com/user-attachments/assets/923caba6-9a4b-46ab-8471-81fefd66ecfe" />
+<img width="1225" height="489" alt="image" src="https://github.com/user-attachments/assets/0c327958-dcd8-4ccb-b561-6f0096da8d3a" />
 
-鲁棒性测试：
+攻击测试：
 
-<img width="1606" height="936" alt="image" src="https://github.com/user-attachments/assets/c5b32283-cf1e-4417-b3aa-172246ec3c02" />
+<img width="1406" height="867" alt="image" src="https://github.com/user-attachments/assets/9e1a56d5-e249-4252-b388-0ae4b7e3d2fa" />
 
-algorithm_report.txt robustness_report.txt分别为系统算法测试与鲁棒性测试结果详细内容
+algorithm_report.txt为系统算法测试结果详细内容
