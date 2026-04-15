@@ -3,14 +3,13 @@ from tkinter import ttk, filedialog, messagebox
 import cv2
 import numpy as np
 from PIL import Image, ImageTk
-import json
 from pathlib import Path
 from config import Config
 from core.embedding import WatermarkEmbedder
 from core.extraction import WatermarkExtractor
 from core.flippability import FlippabilityCalculator
 from utils.image_utils import load_image, save_image, compare_images, create_comparison_view
-from utils.watermark_utils import text_to_bits, bits_to_text
+from utils.watermark_utils import text_to_bits, bits_to_text, encrypted_text_to_bits, bits_to_encrypted_text
 from gui.panels import ImagePanel
 from gui.dialogs import StatsDialog, AboutDialog
 
@@ -51,25 +50,25 @@ class ImageComparisonWindow:
         image_label = ttk.Label(self.inner_frame, image=self.photo)
         image_label.pack(padx=10, pady=10)
 
-        title_text = " | ".join(titles)
+        title_text = "|".join(titles)
         title_label = ttk.Label(
             self.inner_frame,
             text=f"对比视图: {title_text}",
-            font=('Arial', 14, 'bold')
+            font=('Arial', 15, 'bold')
         )
         title_label.pack(pady=(0, 5))
 
         info_frame = ttk.LabelFrame(self.inner_frame, text="差异统计", padding=10)
         info_frame.pack(pady=5, padx=10, fill=tk.X)
         info_text = f"""
-        • 修改像素数: {diff_info['changed_pixels']:,} 像素
-        • 修改比例: {diff_info['change_percentage']:.6f}%
-        • 图像尺寸: {diff_info.get('width', 'N/A')} x {diff_info.get('height', 'N/A')}
+        修改像素数:{diff_info['changed_pixels']:,}像素
+        修改比例:{diff_info['change_percentage']:.4f}%
+        图像尺寸:{diff_info.get('width', 'N/A')}x{diff_info.get('height', 'N/A')}
         """
         info_label = ttk.Label(
             info_frame,
             text=info_text,
-            font=('Consolas', 12),
+            font=('Consolas', 13),
             justify=tk.LEFT
         )
         info_label.pack()
@@ -152,6 +151,8 @@ class MainWindow:
         self.flip_map = None
         self.embedded_blocks = []
         self.flipped_pixels = []
+        self.embedding_key = None
+        self.encryption_enabled = tk.BooleanVar(value=True)  # 默认启用加密
         self._setup_ui()
 
     def _setup_ui(self):
@@ -167,8 +168,8 @@ class MainWindow:
 
         right_frame = ttk.Frame(main_frame)
         right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
-        self._create_display_panel(right_frame)
         self._create_status_bar()
+        self._create_display_panel(right_frame)
 
     def _create_menu(self):
         menubar = tk.Menu(self.root)
@@ -210,8 +211,8 @@ class MainWindow:
             ("1. 读取图片", self.load_image),
             ("2. 计算可翻转性", self.compute_flippability),
             ("3. 嵌入水印", self.embed_watermark),
-            ("4. 提取验证", self.extract_watermark),
-            ("5. 显示差异", self.show_difference),
+            ("4. 显示差异", self.show_difference),
+            ("5. 提取验证", self.extract_watermark),
             ("6. 保存结果", self.save_results),
             ("7. 算法测试", self.run_tests1),
             ("8. 鲁棒性测试", self.run_tests2)
@@ -223,23 +224,16 @@ class MainWindow:
         param_frame = ttk.LabelFrame(parent, text="参数设置", padding=10)
         param_frame.pack(fill=tk.X, pady=5)
 
-        ttk.Label(param_frame, text="块大小:").grid(
-            row=0, column=0, sticky=tk.W, pady=2)
-        self.block_var = tk.StringVar(value=str(self.config.BLOCK_SIZE))
-        ttk.Entry(param_frame, textvariable=self.block_var,
-                  width=15).grid(row=0, column=1, pady=2, padx=5)
-
-        ttk.Label(param_frame, text="密钥:").grid(
-            row=1, column=0, sticky=tk.W, pady=2)
-        self.key_var = tk.StringVar(value=str(self.config.DEFAULT_KEY))
-        ttk.Entry(param_frame, textvariable=self.key_var,
-                  width=15).grid(row=1, column=1, pady=2, padx=5)
-
         ttk.Label(param_frame, text="水印文本:").grid(
-            row=2, column=0, sticky=tk.W, pady=2)
+            row=1, column=0, sticky=tk.W, pady=2)
         self.watermark_var = tk.StringVar(value=self.config.DEFAULT_WATERMARK)
         ttk.Entry(param_frame, textvariable=self.watermark_var,
-                  width=15).grid(row=2, column=1, pady=2, padx=5)
+                  width=15).grid(row=1, column=1, pady=2, padx=5)
+
+        # 加密选项
+        ttk.Checkbutton(param_frame, text="启用AES加密",
+                        variable=self.encryption_enabled).grid(
+            row=2, column=0, columnspan=2, sticky=tk.W, pady=2)
 
         self.shuffling_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(param_frame, text="启用混洗", variable=self.shuffling_var).grid(
@@ -333,12 +327,33 @@ class MainWindow:
             messagebox.showerror("错误", "请先加载图像")
             return
 
-        self.embedder.block_size = int(self.block_var.get())
-        self.extractor.block_size = int(self.block_var.get())
-
+        self.embedder.block_size = 8
+        self.extractor.block_size = 8
         watermark_text = self.watermark_var.get()
-        self.watermark_bits = text_to_bits(watermark_text)
-        key = int(self.key_var.get())
+
+        # 输入密钥
+        from tkinter import simpledialog
+        key_str = simpledialog.askstring(
+            "输入密钥",
+            "请输入嵌入密钥（整数）:",
+            parent=self.root
+        )
+        try:
+            key = int(key_str)
+            self.embedding_key = key
+        except ValueError:
+            messagebox.showerror("错误", "密钥必须是整数！")
+            return
+
+        # 根据是否启用加密，选择转换方式
+        if self.encryption_enabled.get():
+            self._log_info(f"使用AES加密，密钥: {key}")
+            self.watermark_bits = encrypted_text_to_bits(watermark_text, key)
+            self._log_info(f"加密后比特流长度: {len(self.watermark_bits)}")
+        else:
+            self._log_info("未启用加密，直接嵌入")
+            self.watermark_bits = text_to_bits(watermark_text)
+            self._log_info(f"原始比特流长度: {len(self.watermark_bits)}")
 
         self.watermarked_img, stats, blocks, flipped = self.embedder.embed(
             self.original_img,
@@ -353,7 +368,6 @@ class MainWindow:
         self.flipped_pixels = flipped
         self.watermarked_panel.display_image(self.watermarked_img)
 
-        # 显示统计信息
         self.stats_text.delete(1.0, tk.END)
         text = "嵌入统计:\n\n"
         for key, value in stats.items():
@@ -361,18 +375,32 @@ class MainWindow:
                 text += f"{key}: {value:.4f}\n"
             else:
                 text += f"{key}: {value}\n"
+        text += f"使用的密钥: {self.embedding_key}\n"
+        text += f"AES加密: {'启用' if self.encryption_enabled.get() else '禁用'}\n"
         self.stats_text.insert(1.0, text)
         self.status_bar.config(text=f"水印嵌入完成——嵌入容量: {stats['capacity']} bits")
+        self._log_info(f"水印嵌入完成，使用密钥: {self.embedding_key}")
 
     def extract_watermark(self):
         if self.watermarked_img is None:
             messagebox.showerror("错误", "请先嵌入水印")
             return
 
+        from tkinter import simpledialog
+        key_str = simpledialog.askstring(
+            "密钥验证",
+            "请输入提取密钥:",
+            parent=self.root
+        )
+        try:
+            key = int(key_str)
+        except ValueError:
+            messagebox.showerror("错误", "密钥必须是整数！")
+            return
+
         test_img = self.watermarked_img
         original_shape = None
 
-        key = int(self.key_var.get())
         extracted_bits, stats = self.extractor.extract(
             test_img,
             original_shape=original_shape,
@@ -386,20 +414,59 @@ class MainWindow:
         if self.watermark_bits is not None:
             accuracy, ber, nc = self.extractor.verify(
                 extracted_bits, self.watermark_bits)
-            extracted_text = bits_to_text(extracted_bits)
+
+            # 根据加密设置进行解密
+            if self.encryption_enabled.get():
+                try:
+                    extracted_text = bits_to_encrypted_text(
+                        extracted_bits, key)
+                except Exception as e:
+                    extracted_text = f"[解密失败: {str(e)}]"
+            else:
+                extracted_text = bits_to_text(extracted_bits)
+
+            # 原始水印文本
+            original_text = self.watermark_var.get()
 
             result = f"提取结果:\n\n"
-            result += f"原始水印: {self.watermark_var.get()}\n"
+            result += f"原始水印: {original_text}\n"
             result += f"提取水印: {extracted_text}\n"
+            result += f"使用的密钥: {key}\n"
+            if hasattr(self, 'embedding_key') and self.embedding_key is not None:
+                result += f"嵌入时的密钥: {self.embedding_key}\n"
+                if key == self.embedding_key:
+                    result += "✓ 密钥匹配\n\n"
+                else:
+                    result += "✗ 密钥不匹配（水印可能无法正确解密）\n\n"
             result += f"准确率: {accuracy:.2f}%\n"
             result += f"比特错误率: {ber:.4f}\n"
             result += f"相关系数: {nc:.4f}\n"
+            result += f"AES加密: {'启用' if self.encryption_enabled.get() else '禁用'}\n"
             result += f"提取耗时: {stats['time']:.3f}秒"
+
+            # 如果解密后的文本与原始文本匹配，显示成功信息
+            if self.encryption_enabled.get() and extracted_text == original_text:
+                result += "\n\n水印解密 内容完全匹配！"
+            elif self.encryption_enabled.get():
+                result += f"\n\n水印解密 内容部分匹配！"
+
             messagebox.showinfo("提取验证", result)
-            self._log_info(f"提取验证——准确率: {accuracy:.2f}%, BER: {ber:.4f}")
+            self._log_info(
+                f"提取验证——密钥: {key}, 准确率: {accuracy:.2f}%, BER: {ber:.4f}")
         else:
-            extracted_text = bits_to_text(extracted_bits)
-            messagebox.showinfo("提取结果", f"提取的水印: {extracted_text}")
+            if self.encryption_enabled.get():
+                try:
+                    extracted_text = bits_to_encrypted_text(
+                        extracted_bits, key)
+                except Exception as e:
+                    extracted_text = f"[解密失败: {str(e)}]"
+            else:
+                extracted_text = bits_to_text(extracted_bits)
+
+            result = f"提取的水印: {extracted_text}\n\n使用的密钥: {key}"
+            if hasattr(self, 'embedding_key') and self.embedding_key is not None:
+                result += f"\n嵌入时的密钥: {self.embedding_key}"
+            messagebox.showinfo("提取结果", result)
 
     def show_difference(self):
         if self.watermarked_img is None or self.original_img is None:
@@ -410,6 +477,7 @@ class MainWindow:
         diff_info['width'] = self.original_img.shape[1]
         diff_info['height'] = self.original_img.shape[0]
 
+        # 展示差异处
         diff_mask = (self.original_img != self.watermarked_img)
         kernel = np.ones((3, 3), np.uint8)
         diff_mask_dilated = cv2.dilate(
@@ -417,7 +485,7 @@ class MainWindow:
 
         pure_diff = np.zeros(
             (self.original_img.shape[0], self.original_img.shape[1], 3), dtype=np.uint8)
-        pure_diff[diff_mask_dilated.astype(bool)] = [0, 0, 255]
+        pure_diff[diff_mask_dilated.astype(bool)] = [0, 0, 255]  # 红色
 
         changed_pixels = diff_info['changed_pixels']
         total_pixels = self.original_img.shape[0] * self.original_img.shape[1]
@@ -425,8 +493,7 @@ class MainWindow:
 
         diff_info['change_percentage'] = change_percentage
         comparison = create_comparison_view(
-            [self.original_img, self.watermarked_img, pure_diff],
-            ['原始', '水印', '差异']
+            [self.original_img, self.watermarked_img, pure_diff]
         )
         ImageComparisonWindow(
             self.root,
@@ -437,8 +504,8 @@ class MainWindow:
         self.status_bar.config(
             text=f"差异分析: {diff_info['changed_pixels']:,} 像素修改 ({diff_info['change_percentage']:.6f}%)"
         )
-        self._log_info(f"差异分析完成 - 修改像素: {diff_info['changed_pixels']}, "
-                       f"比例: {diff_info['change_percentage']:.6f}%")
+        self._log_info(f"差异分析完成——修改像素: {diff_info['changed_pixels']}, "
+                       f"比例: {diff_info['change_percentage']:.4f}%")
 
     def save_results(self):
         if self.watermarked_img is None:
@@ -470,6 +537,7 @@ class MainWindow:
         self.flip_map = None
         self.embedded_blocks = []
         self.flipped_pixels = []
+        self.embedding_key = None
         self.original_panel.clear()
         self.watermarked_panel.clear()
         self.flip_panel.clear()
@@ -479,14 +547,14 @@ class MainWindow:
         self.status_bar.config(text="已重置")
 
     def run_tests1(self):
-        from tests.test_algorithm import run_all_tests
+        from test_algorithm import run_all_tests
         results = run_all_tests()
         stats_dialog = StatsDialog(self.root, "测试结果", results)
 
     def run_tests2(self):
-        from tests.test_robustness import run_all_robustness_tests
-        results = run_all_robustness_tests()
-        stats_dialog = StatsDialog(self.root, "测试结果", results)
+        # UI展示
+        from gui.attack import AttackWindow
+        attack_window = AttackWindow(self.root, self)
 
     def show_about(self):
         # 显示关于对话框
