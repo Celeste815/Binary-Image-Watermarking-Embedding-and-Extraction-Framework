@@ -24,7 +24,7 @@ class WatermarkEmbedder:
         working_img = img.copy()
         h, w = working_img.shape
 
-        # 步骤1：生成混洗映射
+        # 步骤1：混洗映射
         if shuffling_enabled and key is not None:
             forward_map, inverse_map = self.shuffler.generate_maps((h, w), key)
             shuffled_img = self.shuffler.shuffle(working_img, forward_map)
@@ -35,7 +35,7 @@ class WatermarkEmbedder:
             self.forward_map = None
             self.inverse_map = None
 
-        # 步骤2：计算或获取可翻转性图
+        # 步骤2：计算可翻转性图
         if flip_map is None:
             flip_map = self.flippability_calc.compute_map(shuffled_img)
 
@@ -132,10 +132,9 @@ class WatermarkEmbedder:
             return watermarked_img
 
     def _embed_in_block(self, block, target_bit, flip_scores):
-        # 计算当前块的奇偶性（黑色像素数量的奇偶性）
+        # 计算当前块的奇偶性
         current_parity = (np.sum(block == 0)) % 2
 
-        # 如果奇偶性已匹配，不进行任何翻转
         if current_parity == target_bit:
             return block, False
 
@@ -165,13 +164,6 @@ class WatermarkEmbedder:
             return block, False
 
     def get_embedding_capacity(self, img, min_score=0.3):
-        """
-        估算图像的嵌入容量
-            img: 图像
-            min_score: 最小分数阈值
-        Returns:
-            估算的嵌入容量
-        """
         flip_map = self.flippability_calc.compute_map(img)
         h, w = img.shape
 
